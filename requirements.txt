@@ -1,9 +1,10 @@
 gradio
 deepface
+opencv-python-headless
 transformers
 torch
-spotipystreamlit
-deepface
-opencv-python-headless
+spotipy
 pyttsx3
-
+numpy
+pandas
+tensorflow
