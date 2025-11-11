@@ -2,19 +2,25 @@
 """
 MindEase 2.0 — Your AI Friend Therapist & Women's Companion
 ------------------------------------------------------------
-Beautiful UI + Spotify + Empathetic Chat + Women's Health Tips
+Features:
+- Emotion detection (face + text)
+- Empathetic AI chat
+- Spotify mood playlists
+- Women's health & self-care tips
+- TTS voice responses
+- Works with Streamlit Cloud
 """
 
 import os, random, csv, cv2
 from datetime import datetime
+import numpy as np
+from PIL import Image
 import streamlit as st
 from deepface import DeepFace
 from transformers import pipeline
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 import pyttsx3
-import numpy as np
-from PIL import Image
 
 # ---------- Spotify credentials ----------
 SPOTIFY_CREDS = {
@@ -33,6 +39,7 @@ except Exception as e:
     print("⚠️ Spotify init failed:", e)
     sp = None
 
+
 # ---------- Load models ----------
 @st.cache_resource
 def load_models():
@@ -42,9 +49,10 @@ def load_models():
 
 emo_model, chat_model = load_models()
 
-# ---------- Emotion Analysis (Face + Text) ----------
-def analyze_face_opencv(image: np.ndarray):
-    """Basic face emotion analysis using DeepFace with OpenCV fallback."""
+
+# ---------- Emotion Analysis ----------
+def analyze_face(image: np.ndarray):
+    """Use DeepFace to detect emotion from face image."""
     try:
         if image is None:
             return "neutral"
@@ -57,6 +65,7 @@ def analyze_face_opencv(image: np.ndarray):
         return "neutral"
 
 def analyze_text(text: str):
+    """Use transformer model to detect emotion from text."""
     if not text.strip() or emo_model is None:
         return "neutral"
     try:
@@ -64,6 +73,7 @@ def analyze_text(text: str):
         return max(preds, key=lambda x: x["score"])["label"].lower()
     except Exception:
         return "neutral"
+
 
 # ---------- Spotify Mood Playlist ----------
 def spotify_playlist(mood):
@@ -94,6 +104,7 @@ def spotify_playlist(mood):
         pass
     return None
 
+
 # ---------- TTS ----------
 def tts(text):
     try:
@@ -106,7 +117,8 @@ def tts(text):
     except Exception:
         return None
 
-# ---------- Chat + Empathy ----------
+
+# ---------- Chatbot + Empathy ----------
 def reply_with_empathy(user_text, mood, history):
     if chat_model is None:
         return f"I sense you might be feeling {mood}. I’m here with you 💕"
@@ -120,7 +132,8 @@ def save_chat(user, bot, mood):
         writer = csv.writer(f)
         writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user, bot, mood])
 
-# ---------- Women's Companion ----------
+
+# ---------- Women's Health Tips ----------
 def women_health(flow_color, cramps, craving):
     advice = []
     if flow_color.lower() in ["bright red", "normal red"]:
@@ -139,6 +152,7 @@ def women_health(flow_color, cramps, craving):
     link = playlist["url"] if playlist else "https://open.spotify.com"
     return "\n".join(advice) + f"\n\n🎧 Relax with: {link}"
 
+
 # ---------- Streamlit UI ----------
 st.set_page_config(page_title="🌷 MindEase 2.0", layout="wide")
 
@@ -151,27 +165,41 @@ tab1, tab2 = st.tabs(["💬 General Companion", "🌼 Women’s Companion"])
 with tab1:
     st.subheader("💖 Tell me how you feel today")
 
-    img_file = st.file_uploader("📸 Upload a selfie (optional)", type=["jpg", "jpeg", "png"])
+    # Webcam + Upload options
+    st.markdown("📸 Capture your face or upload an image for emotion detection:")
+    col1, col2 = st.columns(2)
+    with col1:
+        camera_img = st.camera_input("Capture from webcam")
+    with col2:
+        upload_img = st.file_uploader("Upload a selfie", type=["jpg", "jpeg", "png"])
+
     user_input = st.text_input("🗣️ Your thoughts:", placeholder="I'm feeling a bit stressed today...")
 
     if st.button("✨ Analyze & Chat"):
         if user_input:
+            # Pick whichever image source was used
             image = None
-            if img_file:
-                image = np.array(Image.open(img_file))
-            face_emo = analyze_face_opencv(image)
+            if camera_img:
+                image = np.array(Image.open(camera_img))
+            elif upload_img:
+                image = np.array(Image.open(upload_img))
+
+            # Analyze emotions
+            face_emo = analyze_face(image)
             text_emo = analyze_text(user_input)
             mood = text_emo if text_emo != "neutral" else face_emo
+
+            # Get Spotify + Empathetic reply
             playlist = spotify_playlist(mood)
             empathy = reply_with_empathy(user_input, mood, [])
             message = f"**Detected Emotion:** {mood}\n\n💬 {empathy}"
             st.success(message)
 
-            # Spotify card
+            # Spotify playlist card
             if playlist:
                 st.markdown(f"### 🎵 Recommended Playlist: [{playlist['name']}]({playlist['url']})")
                 if playlist['image']:
-                    st.image(playlist['image'], use_container_width=False)
+                    st.image(playlist['image'], width=300)
 
             # Voice output
             voice_path = tts(empathy)
@@ -181,6 +209,7 @@ with tab1:
             save_chat(user_input, empathy, mood)
         else:
             st.warning("Please type how you're feeling first 💬")
+
 
 # ----------- Women’s Companion -----------
 with tab2:
