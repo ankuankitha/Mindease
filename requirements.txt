@@ -1,11 +1,24 @@
-streamlit==1.37.1
-opencv-python-headless==4.10.0.84
-deepface==0.0.91
+# Core dependencies
+streamlit==1.28.0
+opencv-python-headless==4.8.1.78
+numpy==1.24.3
+Pillow==10.0.1
+
+# DeepFace and dependencies (compatible versions)
+deepface==0.0.79
 tensorflow==2.15.0
 keras==2.15.0
-torch==2.3.0
-torchvision==0.18.0
+
+# Spotify integration
 spotipy==2.23.0
-numpy==1.26.4
-pandas==2.2.2
-Pillow==10.3.0
+
+# Additional dependencies for DeepFace
+gdown==4.7.1
+tqdm==4.66.1
+requests==2.31.0
+
+# Image processing
+opencv-contrib-python-headless==4.8.1.78
+
+# Optional but recommended
+protobuf==3.20.3
