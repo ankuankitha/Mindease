@@ -1,6 +1,6 @@
 import streamlit as st
 import cv2
-from deepface import DeepFace
+from fer import FER
 import numpy as np
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
@@ -12,71 +12,68 @@ import time
 # CONFIGURATION
 # -----------------------------
 st.set_page_config(page_title="MindEase", page_icon="🧘", layout="wide")
-
-st.title("🧠 MindEase - Emotion Detection and Music Therapy App")
+st.title("🧠 MindEase - Emotion Detection & Music Therapy")
 
 # -----------------------------
-# LOAD SPOTIFY CREDENTIALS
+# SPOTIFY SETUP
 # -----------------------------
 try:
     SPOTIFY_CREDS = {
-        "client_id": st.secrets[""ceb612b54e414622b7bbf9e1454f6841""],
-        "client_secret": st.secrets["92416ba62edb46879b47dcc2ff2f5387"],
-        "redirect_uri": st.secrets["http://127.0.0.1:8000/callback"]
-    }
+    "client_id": "ceb612b54e414622b7bbf9e1454f6841",
+    "client_secret": "92416ba62edb46879b47dcc2ff2f5387",
+    "redirect_uri": "http://127.0.0.1:8000/callback"
+}
+
 except Exception:
-    st.warning("⚠️ Spotify credentials not found! Please add them in Streamlit Secrets.")
+    st.warning("⚠️ Spotify credentials missing in Streamlit secrets. Add them first!")
     st.stop()
 
-# Spotify authorization
-sp_oauth = SpotifyOAuth(
+scope = "user-read-playback-state,user-modify-playback-state"
+spotify = spotipy.Spotify(auth_manager=SpotifyOAuth(
     client_id=SPOTIFY_CREDS["client_id"],
     client_secret=SPOTIFY_CREDS["client_secret"],
     redirect_uri=SPOTIFY_CREDS["redirect_uri"],
-    scope="user-read-playback-state,user-modify-playback-state"
-)
-spotify = spotipy.Spotify(auth_manager=sp_oauth)
+    scope=scope
+))
 
 # -----------------------------
-# CAMERA & EMOTION DETECTION
+# FACE EMOTION ANALYZER
 # -----------------------------
-st.subheader("🎭 Emotion Detection")
-
-run_camera = st.checkbox("Start Webcam")
+detector = FER(mtcnn=True)
 FRAME_WINDOW = st.image([])
+run_camera = st.checkbox("🎥 Start Webcam for Emotion Detection")
+
+emotion_detected = None
 
 if run_camera:
-    camera = cv2.VideoCapture(0)
-    st.info("Webcam started... please wait a moment.")
-    while run_camera:
-        ret, frame = camera.read()
+    cam = cv2.VideoCapture(0)
+    st.info("Webcam active! Please wait a few seconds...")
+    while True:
+        ret, frame = cam.read()
         if not ret:
-            st.error("⚠️ Unable to access webcam.")
+            st.error("⚠️ Camera not accessible.")
             break
-
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        try:
-            analysis = DeepFace.analyze(frame_rgb, actions=['emotion'], enforce_detection=False)
-            dominant_emotion = analysis[0]['dominant_emotion']
-            cv2.putText(frame_rgb, dominant_emotion, (20, 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-        except Exception as e:
-            dominant_emotion = "neutral"
+        results = detector.detect_emotions(frame_rgb)
+
+        if results:
+            emotion_detected = max(results[0]["emotions"], key=results[0]["emotions"].get)
+            cv2.putText(frame_rgb, f"Emotion: {emotion_detected}",
+                        (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        else:
             cv2.putText(frame_rgb, "Detecting...", (20, 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2, cv2.LINE_AA)
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
 
         FRAME_WINDOW.image(frame_rgb)
-
-        time.sleep(0.2)
-    camera.release()
+        time.sleep(0.25)
 else:
     st.info("✅ Webcam stopped.")
 
 # -----------------------------
-# EMOTION → MUSIC SUGGESTION
+# MUSIC RECOMMENDATION
 # -----------------------------
 def get_playlist_for_emotion(emotion):
-    emotion_playlists = {
+    playlists = {
         "happy": "Happy Hits!",
         "sad": "Life Sucks",
         "angry": "Rock Classics",
@@ -84,35 +81,33 @@ def get_playlist_for_emotion(emotion):
         "fear": "Peaceful Piano",
         "surprise": "Good Vibes"
     }
-    query = emotion_playlists.get(emotion, "Chill Hits")
+    query = playlists.get(emotion, "Chill Hits")
     results = spotify.search(q=query, type='playlist', limit=5)
     if results["playlists"]["items"]:
         return random.choice(results["playlists"]["items"])["external_urls"]["spotify"]
     return None
 
 if st.button("🎵 Recommend Music"):
-    emotion = "happy"  # default
-    st.info("Analyzing mood and finding music...")
-    url = get_playlist_for_emotion(emotion)
-    if url:
-        st.success(f"Your emotion is **{emotion}**. Here's a playlist for you:")
-        st.markdown(f"[Open Playlist 🎧]({url})")
+    if emotion_detected:
+        url = get_playlist_for_emotion(emotion_detected)
+        if url:
+            st.success(f"Detected emotion: **{emotion_detected}**")
+            st.markdown(f"[🎧 Open Playlist]({url})")
+        else:
+            st.warning("No playlist found.")
     else:
-        st.error("Couldn't find a suitable playlist.")
+        st.info("Please detect an emotion first.")
 
 # -----------------------------
-# SPEECH FEEDBACK
+# VOICE ENCOURAGEMENT
 # -----------------------------
-st.subheader("🗣️ Voice Feedback")
-if st.button("Speak Encouragement"):
+if st.button("💬 Speak Encouragement"):
     engine = pyttsx3.init()
-    messages = [
-        "You are doing great, keep going!",
-        "Take a deep breath. Everything will be okay.",
-        "Remember, you are stronger than you think."
-    ]
-    msg = random.choice(messages)
+    msg = random.choice([
+        "You are doing amazing, keep it up!",
+        "Take a deep breath and relax.",
+        "Every challenge makes you stronger."
+    ])
     st.write(msg)
     engine.say(msg)
     engine.runAndWait()
-
