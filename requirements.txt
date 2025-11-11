@@ -1,0 +1,6 @@
+gradio
+deepface
+transformers
+torch
+spotipy
+pyttsx3
