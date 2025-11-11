@@ -1,45 +1,23 @@
 """
-MindEase 2.1 — Your AI Friend Therapist & Women's Companion
-------------------------------------------------------------
-Beautiful UI + Spotify + Empathetic Chat + Women's Health Tips + Gender Detection
+MindEase 2.0 — AI Therapist & Women's Wellness Companion
+---------------------------------------------------------
+Streamlit version with Spotify, Emotion AI, and Wellness Guidance
 """
 
-import os, random, csv
+import os
+import random
+import csv
 from datetime import datetime
-import gradio as gr
+import streamlit as st
+from transformers import pipeline
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+import pyttsx3
 
-# ---------- Safe imports (DeepFace, Transformers, Spotify, TTS) ----------
-try:
-    from deepface import DeepFace
-except ImportError:
-    raise ImportError("⚠️ DeepFace not found. Please install it via: pip install deepface")
-
-try:
-    import cv2
-except ImportError:
-    raise ImportError("⚠️ OpenCV missing. Install with: pip install opencv-python-headless")
-
-try:
-    from transformers import pipeline
-except ImportError:
-    raise ImportError("⚠️ Transformers missing. Run: pip install transformers")
-
-try:
-    import spotipy
-    from spotipy.oauth2 import SpotifyClientCredentials
-except ImportError:
-    raise ImportError("⚠️ Spotipy not found. Run: pip install spotipy")
-
-try:
-    import pyttsx3
-except ImportError:
-    raise ImportError("⚠️ pyttsx3 missing. Run: pip install pyttsx3")
-
-# ---------- Spotify credentials ----------
+# ---------------- SPOTIFY SETUP ----------------
 SPOTIFY_CREDS = {
     "client_id": "ceb612b54e414622b7bbf9e1454f6841",
-    "client_secret": "92416ba62edb46879b47dcc2ff2f5387",
-    "redirect_uri": "http://127.0.0.1:8000/callback"
+    "client_secret": "92416ba62edb46879b47dcc2ff2f5387"
 }
 
 try:
@@ -48,52 +26,27 @@ try:
         client_secret=SPOTIFY_CREDS["client_secret"]
     )
     sp = spotipy.Spotify(auth_manager=sp_auth)
-    print("✅ Spotify connected")
+    st.sidebar.success("✅ Spotify connected")
 except Exception as e:
-    print("⚠️ Spotify init failed:", e)
+    st.sidebar.warning(f"⚠️ Spotify init failed: {e}")
     sp = None
 
-# ---------- Load models ----------
-try:
-    emo_model = pipeline("text-classification", model="j-hartmann/emotion-english-distilroberta-base", top_k=None)
-    print("✅ Emotion model loaded")
-except Exception as e:
-    print("⚠️ Emotion model failed:", e)
-    emo_model = None
-
-try:
-    chat_model = pipeline("text-generation", model="microsoft/DialoGPT-medium")
-    print("✅ Chat model loaded")
-except Exception as e:
-    print("⚠️ Chat model failed:", e)
-    chat_model = None
-
-
-# ---------- Helpers ----------
-def analyze_face(image):
-    """Detect both emotion and gender from an image."""
+# ---------------- EMOTION MODELS ----------------
+@st.cache_resource
+def load_models():
     try:
-        if image is None:
-            return "neutral", "unknown"
+        emo_model = pipeline("text-classification", model="j-hartmann/emotion-english-distilroberta-base", top_k=None)
+    except Exception:
+        emo_model = None
+    try:
+        chat_model = pipeline("text-generation", model="microsoft/DialoGPT-medium")
+    except Exception:
+        chat_model = None
+    return emo_model, chat_model
 
-        result = DeepFace.analyze(
-            img_path=image,
-            actions=["emotion", "gender"],
-            enforce_detection=False
-        )
+emo_model, chat_model = load_models()
 
-        if isinstance(result, list):
-            result = result[0]
-
-        emotion = result.get("dominant_emotion", "neutral")
-        gender = result.get("dominant_gender", "unknown")
-        return emotion, gender
-
-    except Exception as e:
-        print("Face analysis error:", e)
-        return "neutral", "unknown"
-
-
+# ---------------- HELPERS ----------------
 def analyze_text(text):
     if not text.strip() or emo_model is None:
         return "neutral"
@@ -102,7 +55,6 @@ def analyze_text(text):
         return max(preds, key=lambda x: x["score"])["label"].lower()
     except Exception:
         return "neutral"
-
 
 def spotify_playlist(mood):
     if sp is None:
@@ -124,10 +76,9 @@ def spotify_playlist(mood):
         if playlists:
             pick = random.choice(playlists)
             return pick["external_urls"]["spotify"]
-    except Exception as e:
-        print("Spotify error:", e)
+    except Exception:
+        pass
     return None
-
 
 def tts(text):
     try:
@@ -140,26 +91,22 @@ def tts(text):
     except Exception:
         return None
 
-
-def reply_with_empathy(user_text, mood, gender, history):
-    """Generate an empathetic response."""
-    gender_note = f" I sense you're {gender.lower()}." if gender != "unknown" else ""
+def reply_with_empathy(user_text, mood, history):
     if chat_model is None:
-        return f"I sense you might be feeling {mood}.{gender_note} I’m here with you 💕"
+        return f"I sense you might be feeling {mood}. I’m here with you 💕"
     context = "".join([f"User: {u}\nBot: {b}\n" for u, b in history[-3:]])
     prompt = f"{context}User: {user_text}\nBot:"
-    output = chat_model(prompt, max_new_tokens=150, do_sample=True, temperature=0.7)[0]["generated_text"]
-    response = output.split("Bot:")[-1].strip()
-    return response or f"I sense you’re feeling {mood}.{gender_note} You’re not alone 💞"
+    try:
+        output = chat_model(prompt, max_new_tokens=150, do_sample=True, temperature=0.7)[0]["generated_text"]
+        return output.split("Bot:")[-1].strip()
+    except Exception:
+        return f"I understand you're feeling {mood}. I’m here to listen 💗"
 
-
-def save_chat(user, bot, mood, gender):
+def save_chat(user, bot, mood):
     with open("chat_history.csv", "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user, bot, mood, gender])
+        writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user, bot, mood])
 
-
-# ---------- Women’s Companion ----------
 def women_health(flow_color, cramps, craving):
     advice = []
     if flow_color.lower() in ["bright red", "normal red"]:
@@ -177,54 +124,55 @@ def women_health(flow_color, cramps, craving):
     playlist = spotify_playlist("calm") or "https://open.spotify.com"
     return "\n".join(advice) + f"\n\n🎧 Relax with: {playlist}"
 
+# ---------------- STREAMLIT UI ----------------
+st.set_page_config(page_title="🌷 MindEase 2.0", page_icon="🌸", layout="centered")
+st.markdown(
+    "<h1 style='text-align:center; color:#8B5CF6;'>🌸 MindEase 2.0 🌸</h1>"
+    "<p style='text-align:center; font-size:18px;'>Your AI Therapist & Wellness Companion</p>",
+    unsafe_allow_html=True
+)
 
-# ---------- Main ----------
-def process_input(image, text, history):
-    history = history or []
-    face_emo, gender = analyze_face(image)
-    text_emo = analyze_text(text)
-    mood = text_emo if text_emo != "neutral" else face_emo
-    playlist = spotify_playlist(mood)
-    empathy = reply_with_empathy(text, mood, gender, history)
-    message = f"**Emotion:** {mood}\n**Gender:** {gender}\n{empathy}\n\n🎵 Playlist: {playlist or 'Not found'}"
-    audio = tts(message)
-    history.append((text, message))
-    save_chat(text, message, mood, gender)
-    return history, history, audio
+tab1, tab2 = st.tabs(["💬 General Companion", "🌼 Women's Companion"])
 
+# -------- TAB 1: EMOTIONAL SUPPORT --------
+with tab1:
+    st.markdown("### 💖 How are you feeling today?")
+    text_input = st.text_area("Type your feelings here:", placeholder="I'm feeling stressed today...")
+    chat_history = st.session_state.get("chat_history", [])
 
-# ---------- UI ----------
-custom_css = """
-body { background: linear-gradient(135deg, #fdeff9, #ecf0ff); }
-.gradio-container { font-family: 'Poppins', sans-serif; }
-button { border-radius: 12px !important; font-weight: 600; }
-"""
+    if st.button("✨ Analyze & Chat"):
+        mood = analyze_text(text_input)
+        empathy = reply_with_empathy(text_input, mood, chat_history)
+        playlist = spotify_playlist(mood)
+        response = f"**Emotion:** {mood}\n\n{empathy}\n\n🎵 Playlist: {playlist or 'Not found'}"
+        st.write(response)
+        audio_file = tts(response)
+        if audio_file:
+            st.audio(audio_file)
+        chat_history.append((text_input, response))
+        st.session_state["chat_history"] = chat_history
+        save_chat(text_input, response, mood)
 
-with gr.Blocks(css=custom_css, title="🌷 MindEase 2.1") as demo:
-    gr.Markdown(
-        "<h1 style='text-align:center; color:#8B5CF6;'>🌸 MindEase 2.1 🌸</h1>"
-        "<p style='text-align:center; font-size:18px;'>Your AI Therapist & Wellness Companion</p>"
-    )
+    if st.button("🧹 Clear Chat"):
+        st.session_state["chat_history"] = []
+        st.success("Chat cleared!")
 
-    with gr.Tab("💬 General Companion"):
-        img = gr.Image(label="📸 Upload or Capture Face", type="numpy")
-        txt = gr.Textbox(label="💖 Tell me how you feel", placeholder="I'm feeling stressed today...", lines=2)
-        chat = gr.Chatbot(label="MazaBot — Your Empathy Partner", height=400, bubble_full_width=False)
-        audio = gr.Audio(label="🎧 Voice Response", type="filepath")
-        state = gr.State([])
-        btn = gr.Button("✨ Analyze & Chat", variant="primary")
-        clr = gr.Button("🧹 Clear Chat")
-        btn.click(process_input, [img, txt, state], [chat, state, audio])
-        clr.click(lambda: ([], [], None), None, [chat, state, audio])
+    if chat_history:
+        st.markdown("### 🗨️ Conversation History")
+        for user, bot in chat_history[-5:]:
+            st.markdown(f"**You:** {user}")
+            st.markdown(f"**MindEase:** {bot}")
+            st.markdown("---")
 
-    with gr.Tab("🌼 Women’s Companion"):
-        gr.Markdown("<h3>Track your cycle & get mood-based self-care tips 🌙</h3>")
-        flow = gr.Dropdown(["Bright Red", "Dark", "Brown", "Pink"], label="🩸 Blood color")
-        cramps = gr.Dropdown(["Mild", "Moderate", "Severe"], label="💢 Cramps level")
-        craving = gr.Dropdown(["Chocolate", "Salty", "Fried", "None"], label="🍰 Cravings")
-        out = gr.Textbox(label="🌿 Personalized Wellness Advice", lines=7)
-        sub = gr.Button("💗 Get My Tips")
-        sub.click(women_health, [flow, cramps, craving], out)
+# -------- TAB 2: WOMEN'S COMPANION --------
+with tab2:
+    st.markdown("### 🌿 Track your cycle & get wellness tips 🌙")
+    flow = st.selectbox("🩸 Blood color", ["Bright Red", "Dark", "Brown", "Pink"])
+    cramps = st.selectbox("💢 Cramps level", ["Mild", "Moderate", "Severe"])
+    craving = st.selectbox("🍰 Cravings", ["Chocolate", "Salty", "Fried", "None"])
 
-if __name__ == "__main__":
-    demo.launch(share=True)
+    if st.button("💗 Get My Tips"):
+        result = women_health(flow, cramps, craving)
+        st.text_area("🌼 Personalized Advice", value=result, height=200)
+
+st.markdown("<br><p style='text-align:center; color:#888;'>Made with 💜 by MindEase</p>", unsafe_allow_html=True)
