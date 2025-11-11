@@ -1,10 +1,7 @@
-gradio
-deepface
-opencv-python-headless
+streamlit
 transformers
 torch
 spotipy
 pyttsx3
 numpy
 pandas
-tensorflow
