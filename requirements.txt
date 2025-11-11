@@ -1,6 +1,11 @@
-gradio
-deepface
-transformers
-torch
-spotipy
-pyttsx3
+streamlit==1.37.1
+opencv-python-headless==4.10.0.84
+deepface==0.0.91
+tensorflow==2.16.1
+keras==2.16.0
+torch==2.3.0
+torchvision==0.18.0
+spotipy==2.23.0
+numpy==1.26.4
+pandas==2.2.2
+Pillow==10.3.0
