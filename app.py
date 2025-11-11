@@ -1,18 +1,39 @@
-# app.py
 """
-MindEase 2.0 — Your AI Friend Therapist & Women's Companion
+MindEase 2.1 — Your AI Friend Therapist & Women's Companion
 ------------------------------------------------------------
-Beautiful UI + Spotify + Empathetic Chat + Women's Health Tips
+Beautiful UI + Spotify + Empathetic Chat + Women's Health Tips + Gender Detection
 """
 
 import os, random, csv
 from datetime import datetime
 import gradio as gr
-from deepface import DeepFace
-from transformers import pipeline
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
-import pyttsx3
+
+# ---------- Safe imports (DeepFace, Transformers, Spotify, TTS) ----------
+try:
+    from deepface import DeepFace
+except ImportError:
+    raise ImportError("⚠️ DeepFace not found. Please install it via: pip install deepface")
+
+try:
+    import cv2
+except ImportError:
+    raise ImportError("⚠️ OpenCV missing. Install with: pip install opencv-python-headless")
+
+try:
+    from transformers import pipeline
+except ImportError:
+    raise ImportError("⚠️ Transformers missing. Run: pip install transformers")
+
+try:
+    import spotipy
+    from spotipy.oauth2 import SpotifyClientCredentials
+except ImportError:
+    raise ImportError("⚠️ Spotipy not found. Run: pip install spotipy")
+
+try:
+    import pyttsx3
+except ImportError:
+    raise ImportError("⚠️ pyttsx3 missing. Run: pip install pyttsx3")
 
 # ---------- Spotify credentials ----------
 SPOTIFY_CREDS = {
@@ -47,17 +68,31 @@ except Exception as e:
     print("⚠️ Chat model failed:", e)
     chat_model = None
 
+
 # ---------- Helpers ----------
 def analyze_face(image):
+    """Detect both emotion and gender from an image."""
     try:
         if image is None:
-            return "neutral"
-        result = DeepFace.analyze(img_path=image, actions=["emotion"], enforce_detection=False)
+            return "neutral", "unknown"
+
+        result = DeepFace.analyze(
+            img_path=image,
+            actions=["emotion", "gender"],
+            enforce_detection=False
+        )
+
         if isinstance(result, list):
             result = result[0]
-        return result.get("dominant_emotion", "neutral")
-    except Exception:
-        return "neutral"
+
+        emotion = result.get("dominant_emotion", "neutral")
+        gender = result.get("dominant_gender", "unknown")
+        return emotion, gender
+
+    except Exception as e:
+        print("Face analysis error:", e)
+        return "neutral", "unknown"
+
 
 def analyze_text(text):
     if not text.strip() or emo_model is None:
@@ -67,6 +102,7 @@ def analyze_text(text):
         return max(preds, key=lambda x: x["score"])["label"].lower()
     except Exception:
         return "neutral"
+
 
 def spotify_playlist(mood):
     if sp is None:
@@ -88,9 +124,10 @@ def spotify_playlist(mood):
         if playlists:
             pick = random.choice(playlists)
             return pick["external_urls"]["spotify"]
-    except Exception:
-        pass
+    except Exception as e:
+        print("Spotify error:", e)
     return None
+
 
 def tts(text):
     try:
@@ -103,18 +140,24 @@ def tts(text):
     except Exception:
         return None
 
-def reply_with_empathy(user_text, mood, history):
+
+def reply_with_empathy(user_text, mood, gender, history):
+    """Generate an empathetic response."""
+    gender_note = f" I sense you're {gender.lower()}." if gender != "unknown" else ""
     if chat_model is None:
-        return f"I sense you might be feeling {mood}. I’m here with you 💕"
+        return f"I sense you might be feeling {mood}.{gender_note} I’m here with you 💕"
     context = "".join([f"User: {u}\nBot: {b}\n" for u, b in history[-3:]])
     prompt = f"{context}User: {user_text}\nBot:"
     output = chat_model(prompt, max_new_tokens=150, do_sample=True, temperature=0.7)[0]["generated_text"]
-    return output.split("Bot:")[-1].strip()
+    response = output.split("Bot:")[-1].strip()
+    return response or f"I sense you’re feeling {mood}.{gender_note} You’re not alone 💞"
 
-def save_chat(user, bot, mood):
+
+def save_chat(user, bot, mood, gender):
     with open("chat_history.csv", "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user, bot, mood])
+        writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user, bot, mood, gender])
+
 
 # ---------- Women’s Companion ----------
 def women_health(flow_color, cramps, craving):
@@ -134,37 +177,32 @@ def women_health(flow_color, cramps, craving):
     playlist = spotify_playlist("calm") or "https://open.spotify.com"
     return "\n".join(advice) + f"\n\n🎧 Relax with: {playlist}"
 
+
 # ---------- Main ----------
 def process_input(image, text, history):
     history = history or []
-    face_emo = analyze_face(image)
+    face_emo, gender = analyze_face(image)
     text_emo = analyze_text(text)
     mood = text_emo if text_emo != "neutral" else face_emo
     playlist = spotify_playlist(mood)
-    empathy = reply_with_empathy(text, mood, history)
-    message = f"**Emotion:** {mood}\n{empathy}\n\n🎵 Playlist: {playlist or 'Not found'}"
+    empathy = reply_with_empathy(text, mood, gender, history)
+    message = f"**Emotion:** {mood}\n**Gender:** {gender}\n{empathy}\n\n🎵 Playlist: {playlist or 'Not found'}"
     audio = tts(message)
     history.append((text, message))
-    save_chat(text, message, mood)
+    save_chat(text, message, mood, gender)
     return history, history, audio
+
 
 # ---------- UI ----------
 custom_css = """
-body {
-    background: linear-gradient(135deg, #fdeff9, #ecf0ff);
-}
-.gradio-container {
-    font-family: 'Poppins', sans-serif;
-}
-button {
-    border-radius: 12px !important;
-    font-weight: 600;
-}
+body { background: linear-gradient(135deg, #fdeff9, #ecf0ff); }
+.gradio-container { font-family: 'Poppins', sans-serif; }
+button { border-radius: 12px !important; font-weight: 600; }
 """
 
-with gr.Blocks(css=custom_css, title="🌷 MindEase 2.0") as demo:
+with gr.Blocks(css=custom_css, title="🌷 MindEase 2.1") as demo:
     gr.Markdown(
-        "<h1 style='text-align:center; color:#8B5CF6;'>🌸 MindEase 2.0 🌸</h1>"
+        "<h1 style='text-align:center; color:#8B5CF6;'>🌸 MindEase 2.1 🌸</h1>"
         "<p style='text-align:center; font-size:18px;'>Your AI Therapist & Wellness Companion</p>"
     )
 
