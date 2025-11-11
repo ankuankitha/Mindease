@@ -20,9 +20,9 @@ st.title("🧠 MindEase - Emotion Detection and Music Therapy App")
 # -----------------------------
 try:
     SPOTIFY_CREDS = {
-        "client_id": st.secrets["SPOTIFY_CLIENT_ID"],
-        "client_secret": st.secrets["SPOTIFY_CLIENT_SECRET"],
-        "redirect_uri": st.secrets["SPOTIFY_REDIRECT_URI"]
+        "client_id": st.secrets[""ceb612b54e414622b7bbf9e1454f6841""],
+        "client_secret": st.secrets["92416ba62edb46879b47dcc2ff2f5387"],
+        "redirect_uri": st.secrets["http://127.0.0.1:8000/callback"]
     }
 except Exception:
     st.warning("⚠️ Spotify credentials not found! Please add them in Streamlit Secrets.")
@@ -115,3 +115,4 @@ if st.button("Speak Encouragement"):
     st.write(msg)
     engine.say(msg)
     engine.runAndWait()
+
