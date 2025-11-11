@@ -1,7 +1,9 @@
 streamlit
-opencv-python-headless
-deepface
 transformers
 torch
+deepface
 spotipy
 pyttsx3
+opencv-python-headless
+pillow
+numpy
